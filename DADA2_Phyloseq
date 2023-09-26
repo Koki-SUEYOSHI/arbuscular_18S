@@ -142,3 +142,119 @@ colnames(track) <- c("input", "filtered", "denoisedF", "denoisedR", "merged",
 rownames(track) <- sample.names
 head(track)
 write.table(track,file="track.txt")
+
+#Assign taxonomy
+unite.ref <- "/Users/forestry/Desktop/sueyoshi/Analize＆Datas/for_AMF/database/not_VTtype/claered_database.fasta"  # CHANGE ME to location on your machine
+taxa <- assignTaxonomy(seqtab.nochim, unite.ref, minBoot = 50, multithread = TRUE, tryRC = TRUE)
+
+taxa.print <- taxa  # Removing sequence rownames for display only
+rownames(taxa.print) <- NULL
+head(taxa.print)
+
+write.table(taxa,file="taxonomy.txt")
+write.table(seqtab.nochim,file="seqtabnochim.txt")
+
+samples.out<-rownames(seqtab.nochim)
+ps <- phyloseq(otu_table(seqtab.nochim, taxa_are_rows=FALSE), 
+               tax_table(taxa))
+
+#store the DNA sequences of our ASVs in the refseq slot of the phyloseq object
+dna <- Biostrings::DNAStringSet(taxa_names(ps))
+names(dna) <- taxa_names(ps)
+ps <- merge_phyloseq(ps, dna)
+taxa_names(ps) <- paste0("ASV", seq(ntaxa(ps)))
+ps
+
+#別でNCBI用のデータを作っている
+asv_dna_df <- data.frame(ASV = taxa_names(ps), DNA_Sequence = as.character(dna))
+write.csv(asv_dna_df, file = "ASV_DNA_Mapping.csv", row.names = FALSE)
+
+# Remove 
+ps_removed = subset_taxa(ps, 
+                         Family  != "Mitochondria" &
+                           Class   != "Chloroplast" &
+                           Kingdom  != "NA")
+
+#To output OTU table
+otu_table.t<-t(ps_removed@otu_table)
+ps.t<-cbind(otu_table.t,ps_removed@tax_table)
+write.table(ps.t,  file="ASV_table.txt")
+
+# Rarefication
+ps.rarefied = rarefy_even_depth(ps_removed, rngseed=1, sample.size=0.9*min(sample_sums(ps_removed)), replace=F)
+otu_table.t<-t(ps.rarefied@otu_table)
+ps.t<-cbind(otu_table.t,ps.rarefied@tax_table)
+write.table(ps.t,  file="rarefied_ASV_table.txt")
+
+#####
+
+#To output OTU table without remove
+otu_table.t<-t(ps@otu_table)
+ps.t<-cbind(otu_table.t,ps@tax_table)
+write.table(ps.t,  file="ASV_table_2.txt")
+
+# Rarefication
+ps.rarefied = rarefy_even_depth(ps, rngseed=1, sample.size=0.9*min(sample_sums(ps)), replace=F)
+otu_table.t<-t(ps.rarefied@otu_table)
+ps.t<-cbind(otu_table.t,ps.rarefied@tax_table)
+write.table(ps.t,  file="rarefied_ASV_table_2.txt")
+
+# データベースのフォーマットを書き換えるとき。
+#fastaファイルの読み込み
+fasta <- readLines("/Users/forestry/Desktop/sueyoshi/Analize＆Datas/for_AMF/database/not_VTtype/maarjam_database_SSU.fasta")
+# ヘッダーを書き換える
+modified_fasta <- character(length(fasta))
+for (i in seq_along(fasta)) {
+  if (startsWith(fasta[i], ">")) {
+    header_parts <- strsplit(fasta[i], " ")[[1]]
+    header_parts[length(header_parts)] <- paste0(header_parts[length(header_parts)], ";")
+    taxonomy <- paste(header_parts[1:length(header_parts)], collapse = " ;")
+    modified_header <- taxonomy
+    modified_fasta[i] <- modified_header
+  } else {
+    modified_fasta[i] <- fasta[i]
+  }
+}
+
+# 書き換えたfastaファイルを保存
+writeLines(modified_fasta, "output2.fasta")
+
+#####
+
+# Output both ASVs and sequences
+#Assign taxonomy
+#unite.ref <- "/Users/forestry/Desktop/sueyoshi/Analize＆Datas/for_AMF/database/not_VTtype/output.fasta"  # CHANGE ME to location on your machine
+unite.ref <- "/Users/forestry/Desktop/sueyoshi/Analize＆Datas/for_AMF/database/not_VTtype/output.fasta"
+taxa <- assignTaxonomy(seqtab.nochim, unite.ref, minBoot = 50, multithread = TRUE, tryRC = TRUE)
+
+taxa.print <- taxa  # Removing sequence rownames for display only
+#rownames(taxa.print) <- NULL
+head(taxa.print)
+
+samples.out<-rownames(seqtab.nochim)
+ps <- phyloseq(otu_table(seqtab.nochim, taxa_are_rows=FALSE), 
+               tax_table(taxa))
+#store the DNA sequences of our ASVs in the refseq slot of the phyloseq object
+
+dna <- Biostrings::DNAStringSet(taxa_names(ps))
+names(dna) <- taxa_names(ps)
+ps <- merge_phyloseq(ps, dna)
+taxa_names(ps) <- paste0("ASV", seq(ntaxa(ps)))
+ps
+
+#output ASV and DNA sequences
+asv_dna_df <- data.frame(ASV = taxa_names(ps), DNA_Sequence = as.character(dna))
+write.csv(asv_dna_df, file = "ASV_DNA_Mapping.csv", row.names = FALSE)
+
+# Select the top 20 ASVs
+top_20_asv <- asv_dna_df[1:20, ]
+
+# Create a DNAStringSet object for the DNA sequences
+dna_sequences <- DNAStringSet(top_20_asv$DNA_Sequence)
+
+# Create a FASTA format string for the DNA sequences
+fasta_string <- paste(sprintf(">%s\n%s", top_20_asv$ASV, dna_sequences), collapse = "\n")
+
+# Write the FASTA string to a file
+writeLines(fasta_string, "ASV_DNA_Mapping.fasta")
+
