@@ -1,0 +1,65 @@
+library(ggplot2)
+library(stringr)
+library(stringi)
+
+setwd("~/Desktop/sueyoshi/Analize＆Datas/data_YAKUSHIMA/results(DADA2~relative_abundance)/for_AMF/うまく行ったデータ/")
+ASV.table <- read.table(file="rarefied_ASV_table.txt",header=T)
+
+# % table
+ASV <- ASV.table [,1:(ncol(ASV.table)-12)]
+taxonomy <- ASV.table [,(ncol(ASV.table)-11):(ncol(ASV.table)-5)]
+percent <- ASV / mean(colSums(ASV)) *100
+# Remove "p__" and "c__" before phylum name
+#taxonomy <- data.frame(lapply(taxonomy, function(x){gsub(pattern="p__", replacement = "", x)}),stringsAsFactors = FALSE)
+#taxonomy <- data.frame(lapply(taxonomy, function(x){gsub(pattern="c__", replacement = "", x)}),stringsAsFactors = FALSE)
+
+# class table(本当はorder)
+class.ag <- aggregate(percent, by=list(taxonomy$Class),FUN = sum,na.rm=F)
+row.names(class.ag)<- class.ag[,1]
+class.ag <- class.ag[,-1]
+class.ag <- data.frame(class.ag)
+rowMeans <- rowMeans(class.ag)
+class.ag <- cbind(class.ag,rowMeans)
+class.ag <- class.ag[order(class.ag$rowMeans,decreasing = T),] 
+class.ag <- class.ag[,-ncol(class.ag)]
+  
+# Species table
+species.ag <- aggregate(percent, by=list(taxonomy$Species),FUN = sum,na.rm=F)
+row.names(species.ag) <- species.ag[,1]
+species.ag <- species.ag[,-1]
+species.ag <- data.frame(species.ag)
+rowMeans <- rowMeans(species.ag)
+species.ag <- cbind(species.ag,rowMeans)
+species.ag <- species.ag[order(species.ag$rowMeans,decreasing = T),] 
+species.ag <- species.ag[,-ncol(species.ag)]
+
+
+# Make dataset_for_class
+class.table <- data.frame(class.ag)
+selected.t <- t (class.table)
+write.csv(selected.t, "aggregated.class.table.csv")
+
+# Make dataset_for_species
+species.table <- data.frame(species.ag)
+selected.t <- t (species.table)
+write.csv(selected.t, "aggregated.species.table.csv")
+
+## >1% species table
+species.ag.2 <- aggregate(percent, by=list(taxonomy$Species),FUN = sum,na.rm=F)
+row.names(species.ag.2) <- species.ag.2[,1]
+species.ag.2 <- species.ag.2[,-1]
+species.ag.2 <- data.frame(species.ag.2)
+rowMeans <- rowMeans(species.ag.2)
+species.ag.2 <- cbind(species.ag.2,rowMeans)
+major.species.2 <- species.ag.2[species.ag.2[,"rowMeans"] > 1,]
+species.ag.2 <- species.ag.2[order(species.ag.2$rowMeans,decreasing = T),] 
+minor.species.2 <- species.ag.2[species.ag.2[,"rowMeans"] < 1,]
+others <- colSums (minor.species.2)
+selected.species.2 <- rbind (major.species.2, others) 
+rownames (selected.species.2)[nrow(selected.species.2)] <- "Others"
+selected.species.2 <- selected.species.2[,-ncol(selected.species.2)]
+
+# Make dataset_for_species
+species.table.2 <- data.frame(selected.species.2)
+selected.t <- t (selected.species.2)
+write.csv(selected.t, "aggregated.species.table.2.csv")
