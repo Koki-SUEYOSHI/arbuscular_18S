@@ -1,0 +1,179 @@
+library(ggplot2)
+library(vegan)
+library(ggrepel)
+
+setwd("~/Desktop/sueyoshi/Analize＆Datas/data_YAKUSHIMA/for_envfit/AMF/")
+#delete column
+df.koki <- read.table("/Users/forestry/Desktop/sueyoshi/Analize＆Datas/data_YAKUSHIMA/results(DADA2~relative_abundance)/for_AMF/うまく行ったデータ/rarefied_ASV_table.txt",header = T)
+print(df.koki)
+df.koki <- df.koki[,-c(2,4,6,7,9,10,22,24,35,36,37,43,46,47,56,60,62,64)]
+write.table(df.koki,file="extracted_ASV_table_with_N_AMF.txt")
+
+df.koki2 <- read.csv("~/Desktop/sueyoshi/Analize＆Datas/data_YAKUSHIMA/for_envfit/AMF/with_N_AMF.csv",header = T)
+df.koki2 <- df.koki2[-51:-71,-c(17:44)]
+write.csv(df.koki2,file="extracted_with_N_16s_fixed.csv")
+
+METADATA <- read.csv("~/Desktop/sueyoshi/Analize＆Datas/data_YAKUSHIMA/for_envfit/AMF/extracted_with_N_AMF_fixed.csv",row.names=1,header = T)
+ASV.table <- read.table("~/Desktop/sueyoshi/Analize＆Datas/data_YAKUSHIMA/for_envfit/AMF/extracted_ASV_table_with_N_AMF.txt",header = T)
+#METADATA <- METADATA[,1:(ncol(METADATA)-26)] #加えた
+
+# % table
+ASV <- ASV.table [,1:(ncol(ASV.table)-12)]
+taxonomy <- ASV.table [,(ncol(ASV.table)-11):(ncol(ASV.table)-5)]
+percent <- ASV / mean(colSums(ASV)) *100
+
+# class table(本当はorder)
+class.ag <- aggregate(percent, by=list(taxonomy$Class),FUN = sum,na.rm=F)
+row.names(class.ag)<- class.ag[,1]
+class.ag <- class.ag[,-1]
+class.ag <- data.frame(class.ag)
+rowMeans <- rowMeans(class.ag)
+class.ag <- cbind(class.ag,rowMeans)
+class.ag <- class.ag[order(class.ag$rowMeans,decreasing = T),] 
+class.ag <- class.ag[,-ncol(class.ag)]
+class.ag.t <- t(class.ag)
+
+# Species table
+species.ag <- aggregate(percent, by=list(taxonomy$Species),FUN = sum,na.rm=F)
+row.names(species.ag) <- species.ag[,1]
+species.ag <- species.ag[,-1]
+species.ag <- data.frame(species.ag)
+rowMeans <- rowMeans(species.ag)
+species.ag <- cbind(species.ag,rowMeans)
+species.ag <- species.ag[order(species.ag$rowMeans,decreasing = T),] 
+species.ag <- species.ag[,-ncol(species.ag)]
+species.ag.t <- t(species.ag)
+
+# nmds
+percent.t <- t (percent)
+nmds <-metaMDS(percent.t, trace=F, distance="bray")
+env.fit<-envfit(nmds, METADATA, perm=10000, na.rm=TRUE)
+#kingdom.fit<-envfit(nmds, kingdom.t, perm=10000)
+#phylum.fit<-envfit(nmds, major.phylum.t, perm=10000)
+class.fit<-envfit(nmds, class.ag.t, perm=10000)
+species.fit<-envfit(nmds, species.ag.t, perm=10000)
+
+#Make dataset
+data <- cbind(nmds$points,METADATA)
+env.values <- (env.fit$vectors[1]$arrows)
+pval <- (env.fit$vectors[4]$pvals)
+env.arrows <- cbind (env.values, pval)
+env.arrows <- data.frame(subset (env.arrows, pval < 0.05))
+class.values <- (class.fit$vectors[1]$arrows)
+pval <- (class.fit$vectors[4]$pvals)
+class.arrows <- cbind (class.values, pval)
+class.arrows <- data.frame(subset (class.arrows, pval < 0.05))
+species.values <- (species.fit$vectors[1]$arrows)
+pval <- (species.fit$vectors[4]$pvals)
+species.arrows <- cbind (species.values, pval)
+species.arrows <- data.frame(subset (species.arrows, pval < 0.05))
+
+# ggplot
+rate = 0.5 # how many times shorter than acctual arrows
+options(ggrepel.max.overlaps = Inf)
+ggplot()+
+  geom_point(data=data, aes(x=MDS1,y=MDS2, color = site, shape=tree),size=5)+
+  geom_segment(data=env.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="black")+
+  # geom_segment(data=kingdom.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="black")+
+  geom_segment(data=class.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="#404040")+
+  geom_segment(data=species.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="#202020")+
+  #geom_segment(data=class.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="#808080")+
+  geom_text_repel(data=env.arrows, aes(x=(NMDS1*rate), y=(NMDS2*rate), label=rownames(env.arrows)),  size=4, color="black") +
+  # geom_text_repel(data=kingdom.arrows, aes(x=(NMDS1*rate), y=(NMDS2*rate), label=rownames(kingdom.arrows)),  size=4, color="black") +
+  geom_text_repel(data=class.arrows, aes(x=(NMDS1*rate), y=(NMDS2*rate), label=rownames(class.arrows)),  size=4, color="#404040") +
+  geom_text_repel(data=species.arrows, aes(x=(NMDS1*rate), y=(NMDS2*rate), label=rownames(species.arrows)),  size=4, color="#202020") +
+  #geom_text_repel(data=class.arrows, aes(x=(NMDS1*rate), y=(NMDS2*rate), label=rownames(class.arrows)),  size=4, color="#808080") +
+  theme(text=element_text(size=14,color="black"),axis.text=element_text(size=12,color="black"))+
+  coord_fixed()
+
+# Save
+ggsave(file = "AMF_everything.png")
+
+#without_words
+rate = 0.5 # how many times shorter than acctual arrows
+options(ggrepel.max.overlaps = Inf)
+ggplot()+
+  geom_point(data=data, aes(x=MDS1,y=MDS2, color = site, shape=tree),size=5)+
+  geom_segment(data=env.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="black")+
+  # geom_segment(data=kingdom.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="black")+
+  geom_segment(data=class.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="#404040")+
+  geom_segment(data=species.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="#202020")+
+  #geom_segment(data=class.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="#808080")+
+  # geom_text_repel(data=kingdom.arrows, aes(x=(NMDS1*rate), y=(NMDS2*rate), label=rownames(kingdom.arrows)),  size=4, color="black") +
+  coord_fixed()
+
+# Save
+ggsave(file = "AMF_everything_without_words.png")
+
+# ggplot_AMF_only
+rate = 0.5 # how many times shorter than acctual arrows
+options(ggrepel.max.overlaps = Inf)
+ggplot()+
+  geom_point(data=data, aes(x=MDS1,y=MDS2, color = site, shape=tree),size=5)+
+  # geom_segment(data=kingdom.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="black")+
+  geom_segment(data=class.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="#404040")+
+  geom_segment(data=species.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="#202020")+
+  #geom_segment(data=class.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="#808080")+
+  # geom_text_repel(data=kingdom.arrows, aes(x=(NMDS1*rate), y=(NMDS2*rate), label=rownames(kingdom.arrows)),  size=4, color="black") +
+  geom_text_repel(data=class.arrows, aes(x=(NMDS1*rate), y=(NMDS2*rate), label=rownames(class.arrows)), size=4, color="#404040") +
+  geom_text_repel(data=species.arrows, aes(x=(NMDS1*rate), y=(NMDS2*rate), label=rownames(species.arrows)), size=4, color="#202020") +
+  #geom_text_repel(data=class.arrows, aes(x=(NMDS1*rate), y=(NMDS2*rate), label=rownames(class.arrows)),  size=4, color="#808080") +
+  theme(text=element_text(size=14,color="black"),axis.text=element_text(size=12,color="black"))+
+  coord_fixed()
+
+# Save
+ggsave(file = "AMF_only_microbes.png")
+
+# without_words
+rate = 0.5 # how many times shorter than acctual arrows
+options(ggrepel.max.overlaps = Inf)
+ggplot()+
+  geom_point(data=data, aes(x=MDS1,y=MDS2, color = site, shape=tree),size=5)+
+  # geom_segment(data=kingdom.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="black")+
+  geom_segment(data=class.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="#404040")+
+  geom_segment(data=species.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="#202020")+
+  #geom_segment(data=class.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="#808080")+
+  # geom_text_repel(data=kingdom.arrows, aes(x=(NMDS1*rate), y=(NMDS2*rate), label=rownames(kingdom.arrows)),  size=4, color="black") +
+  theme(text=element_text(size=14,color="black"),axis.text=element_text(size=12,color="black"))+
+  coord_fixed()
+
+# Save
+ggsave(file = "AMF_only_microbes_without_words.png")
+
+# ggplot_scores_only
+rate = 0.5 # how many times shorter than acctual arrows
+ggplot()+
+  geom_point(data=data, aes(x=MDS1,y=MDS2, color = site, shape=tree),size=5)+
+  geom_segment(data=env.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="black")+
+  # geom_segment(data=kingdom.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="black")+
+  geom_text_repel(data=env.arrows, aes(x=(NMDS1*rate), y=(NMDS2*rate), label=rownames(env.arrows)),  size=4, color="black") +
+  # geom_text_repel(data=kingdom.arrows, aes(x=(NMDS1*rate), y=(NMDS2*rate), label=rownames(kingdom.arrows)),  size=4, color="black") +
+  theme(text=element_text(size=14,color="black"),axis.text=element_text(size=12,color="black"))+
+  coord_fixed()
+
+# Save
+ggsave(file = "AMF_scores_only.png")
+
+# without_words
+rate = 0.5 # how many times shorter than acctual arrows
+ggplot()+
+  geom_point(data=data, aes(x=MDS1,y=MDS2, color = site, shape=tree),size=5)+
+  geom_segment(data=env.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="black")+
+  # geom_segment(data=kingdom.arrows, aes(x = 0, y = 0, xend = (NMDS1*rate), yend = (NMDS2*rate)), arrow = arrow(length = unit(0.3,"cm")),color="black")+
+  # geom_text_repel(data=kingdom.arrows, aes(x=(NMDS1*rate), y=(NMDS2*rate), label=rownames(kingdom.arrows)),  size=4, color="black") +
+  theme(text=element_text(size=14,color="black"),axis.text=element_text(size=12,color="black"))+
+  coord_fixed()
+
+# Save
+ggsave(file = "AMF_scores_only_without_words.png")
+
+#view a stress score
+nmds$stress
+
+write.csv(class.arrows,"class.arrows.csv")
+write.csv(class.values,"class.values.csv")
+write.csv(species.arrows,"species.arrows.csv")
+write.csv(species.values,"species.values.csv")
+write.csv(env.arrows,"env.arrows.csv")
+write.csv(env.values,"env.values.csv")
+write.csv(data,"data.csv")
